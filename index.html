@@ -1,31 +1,132 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Terminal Al-Hakem - Real Linux in your Browser</title>
-<meta http-equiv="refresh" content="0; url=./src/app.html">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Terminal Al-Hakem</title>
+<link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css">
 <style>
-  html,body{margin:0;height:100%;background:#0a0e0b;color:#33ff77;
-    font-family:monospace;display:flex;align-items:center;
-    justify-content:center;flex-direction:column;gap:16px}
-  a{color:#33ff77;text-decoration:none;border:1px solid #33ff77;
-    padding:10px 20px;border-radius:6px;font-weight:bold}
-  a:hover{background:#33ff77;color:#04140a}
-  .spin{width:36px;height:36px;border:3px solid #1c2a20;
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:#0a0e0b;overflow:hidden}
+  body{font-family:monospace;display:flex;flex-direction:column;height:100vh}
+  header{display:flex;align-items:center;gap:8px;padding:6px 10px;
+    background:#0f1511;border-bottom:1px solid #1c2a20;flex-shrink:0}
+  .dots{display:flex;gap:5px}
+  .dots span{width:10px;height:10px;border-radius:50%}
+  .dots span:nth-child(1){background:#ff5f57}
+  .dots span:nth-child(2){background:#febc2e}
+  .dots span:nth-child(3){background:#28c840}
+  .title{color:#33ff77;font-weight:900;letter-spacing:1.5px;font-size:12px}
+  .title .hakem{color:#ffd75e}
+  .status{margin-left:auto;color:#5c7a63;font-size:10px;
+    display:flex;align-items:center;gap:5px}
+  .status .dot{width:7px;height:7px;border-radius:50%;
+    background:#ff3b3b;transition:.3s}
+  .status.ready .dot{background:#33ff77;box-shadow:0 0 8px #33ff77}
+  #terminal{flex:1;padding:4px 6px;background:#0a0e0b}
+  #boot{position:fixed;inset:0;background:#0a0e0b;display:flex;
+    align-items:center;justify-content:center;flex-direction:column;
+    gap:14px;z-index:100;color:#33ff77}
+  #boot.hidden{display:none}
+  .spin{width:38px;height:38px;border:3px solid #1c2a20;
     border-top-color:#33ff77;border-radius:50%;
     animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .sub{color:#5c7a63;font-size:12px}
+  .sub{color:#5c7a63;font-size:11px;text-align:center;max-width:400px}
 </style>
 </head>
 <body>
+
+<div id="boot">
   <div class="spin"></div>
-  <div style="font-weight:900;letter-spacing:2px">TERMINAL AL-HAKEM</div>
-  <div class="sub">redirecting to the terminal...</div>
-  <a href="./src/app.html">Open Terminal Al-Hakem →</a>
-  <script>
-    setTimeout(()=>{ window.location.href='./src/app.html'; }, 500);
-  </script>
+  <div style="font-weight:900;letter-spacing:2px;font-size:12px">TERMINAL AL-HAKEM</div>
+  <div class="sub" id="bootStage">loading engine...</div>
+</div>
+
+<header>
+  <div class="dots"><span></span><span></span><span></span></div>
+  <div class="title">TERMINAL <span class="hakem">AL-HAKEM</span></div>
+  <div class="status" id="status"><span class="dot"></span><span id="statusText">booting...</span></div>
+</header>
+
+<div id="terminal"></div>
+
+<script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<script type="module">
+const bootEl = document.getElementById('boot');
+const stageEl = document.getElementById('bootStage');
+const statusEl = document.getElementById('status');
+const statusTx = document.getElementById('statusText');
+
+const term = new Terminal({
+  cursorBlink:true, fontSize:14, lineHeight:1.2, scrollback:10000,
+  fontFamily:"'Cascadia Code','Fira Code',monospace",
+  theme:{background:'#0a0e0b',foreground:'#c8facc',cursor:'#33ff77',
+    cursorAccent:'#0a0e0b',black:'#0a0e0b',red:'#ff6b6b',green:'#33ff77',
+    yellow:'#ffd75e',blue:'#4fd6ff',magenta:'#c084fc',cyan:'#4fd6ff',
+    white:'#c8facc',brightBlack:'#5c7a63',brightRed:'#ff3b3b',
+    brightGreen:'#5effa0',brightYellow:'#ffe08a',brightBlue:'#7fd8ff',
+    brightCyan:'#7fd8ff',brightWhite:'#ffffff'}
+});
+const fit = new FitAddon.FitAddon();
+term.loadAddon(fit);
+term.open(document.getElementById('terminal'));
+setTimeout(()=>fit.fit(),50);
+window.addEventListener('resize',()=>fit.fit());
+document.getElementById('terminal').addEventListener('click',()=>term.focus());
+
+(async () => {
+  try {
+    stageEl.textContent = 'loading CheerpX engine...';
+    const { CheerpX, HttpBytesDevice } = await import(
+      'https://cxrtnc.leaningtech.com/1.0.10/cx.esm.js'
+    );
+
+    stageEl.textContent = 'mounting Debian filesystem...';
+    const cx = await CheerpX.Linux.create({
+      mounts: [{
+        type: 'ext2',
+        path: '/',
+        dev: new HttpBytesDevice(
+          'https://storage.googleapis.com/webvm-data/debian.ext2'
+        )
+      }]
+    });
+
+    stageEl.textContent = 'attaching console...';
+    cx.setConsole(term, ()=>{});
+
+    term.writeln('\x1b[1;32m  ╔══════════════════════════════════════════════╗\x1b[0m');
+    term.writeln('\x1b[1;32m  ║      T E R M I N A L   A L - H A K E M        ║\x1b[0m');
+    term.writeln('\x1b[1;32m  ║   Real Debian Linux · bash · apt · python      ║\x1b[0m');
+    term.writeln('\x1b[1;32m  ╚══════════════════════════════════════════════╝\x1b[0m');
+    term.writeln('');
+    term.writeln('\x1b[1;31mHAKEM~$\x1b[0m starting /bin/bash ...');
+    term.writeln('');
+
+    bootEl.classList.add('hidden');
+    statusEl.classList.add('ready');
+    statusTx.textContent = 'linux running';
+
+    await cx.run('/bin/bash', ['--login'], {
+      env: ['HOME=/root','TERM=xterm-256color',
+            'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin']
+    });
+
+    term.writeln('\x1b[1;31m[ shell exited — refresh to reboot ]\x1b[0m');
+  } catch (err) {
+    console.error(err);
+    statusTx.textContent = 'failed';
+    bootEl.classList.remove('hidden');
+    bootEl.innerHTML = `
+      <div style="color:#ff6b6b;font-weight:900;font-size:15px">⚠️ Boot failed</div>
+      <div style="color:#ff6b6b;font-size:11px;max-width:400px;text-align:center;line-height:1.6">
+        ${err && err.message ? err.message : err}
+      </div>
+      <div class="sub">جرّب Refresh للصفحة.</div>`;
+  }
+})();
+</script>
 </body>
 </html>
